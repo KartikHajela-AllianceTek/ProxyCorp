@@ -1,0 +1,17 @@
+[
+  {
+    "name": "Charlie",
+    "expertise": ["AI", "Machine Learning", "Python", "Predictive Models"],
+    "pointer_key": "EMP_001"
+  },
+  {
+    "name": "Evan",
+    "expertise": ["Angular", "React", "Frontend", "UI"],
+    "pointer_key": "EMP_002"
+  },
+  {
+    "name": "Khush",
+    "expertise": ["Project Management", "Scrum", "Agile Scaling"],
+    "pointer_key": "EMP_003"
+  }
+]

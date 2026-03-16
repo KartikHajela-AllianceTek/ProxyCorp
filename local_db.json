@@ -1,0 +1,20 @@
+{
+  "contact_info": {
+    "EMP_001": {
+      "email": "khushaghera.work+ai@gmail.com", 
+      "teams_id": "@charlie_ai"
+    },
+    "EMP_002": {
+      "email": "khushaghera.work+design@gmail.com", 
+      "teams_id": "@evan_front"
+    },
+    "EMP_003": {
+      "email": "khushaghera.work@gmail.com", 
+      "teams_id": "@khush_pm"
+    }
+  },
+  "templates": {
+    "standard_update": "Hi {name},\n\n{context}",
+    "meeting_invite": "Hi {name},\n\nPlease join us for a meeting regarding {context} at {time}.\n\nProject Manager"
+  }
+}

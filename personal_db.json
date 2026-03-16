@@ -1,0 +1,23 @@
+{
+  "EMP_001": {
+    "schedule": {
+      "2026-03-16": ["09:00-10:00", "14:00-15:00"],
+      "2026-03-17": ["11:00-12:00"]
+    },
+    "past_projects": ["Project Alpha (AI Vision)", "Swarm Tech PoC"]
+  },
+  "EMP_002": {
+    "schedule": {
+      "2026-03-16": ["11:00-12:00", "14:00-15:00"],
+      "2026-03-17": ["09:00-10:00"]
+    },
+    "past_projects": ["Dashboard v2", "UI Modernization"]
+  },
+  "EMP_003": {
+    "schedule": {
+      "2026-03-16": ["10:00-11:00", "14:00-15:00"],
+      "2026-03-17": ["15:00-16:00"]
+    },
+    "past_projects": ["Enterprise Agile Rollout"]
+  }
+}
