@@ -3,6 +3,7 @@ import operator
 import os
 from typing import Annotated, TypedDict, List
 
+from dotenv import load_dotenv
 from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END
@@ -12,11 +13,14 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from langchain_mcp_adapters.tools import load_mcp_tools
 
-
-# # Azure OpenAI
+# Load environment variables from .env file
+load_dotenv()
 
 llm = AzureChatOpenAI(
-    azure_deployment="gpt-4o",
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+    azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
     temperature=0
 )
 

@@ -7,6 +7,10 @@ python-dotenv
 # OpenAI SDK (required by langchain-openai)
 openai
 
+# MCP (Model Context Protocol)
+mcp
+langchain-mcp-adapters
+
 # Google APIs (used for Calendar + Gmail tooling)
 google-auth
 google-auth-oauthlib
