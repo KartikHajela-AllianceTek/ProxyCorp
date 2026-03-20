@@ -1,178 +1,137 @@
 # pm_agent/main.py
-from unittest import result
+
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import uvicorn
+import asyncio
+
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.types import AgentCard, AgentCapabilities, AgentSkill
-
-from logic import PMLogic
 from a2a.server.agent_execution import AgentExecutor
 from a2a.utils import new_agent_text_message
-from icecream import ic
-import httpx
+from groq import Groq
 from dotenv import load_dotenv
-import asyncio
-import os
+
+from utils import call_agent, extract_msg
 
 load_dotenv()
 
-from groq import Groq
+client = Groq(api_key=os.getenv("API_KEY"))
 
-API_KEY = os.getenv("API_KEY")
+PM_CALENDAR = ["3pm", "4pm"]
 
-client = Groq(api_key=API_KEY)
+TL_MAP = {
+    "AI": ("http://localhost:9002/", "AI TL"),
+    "ANDROID": ("http://localhost:9003/", "Android TL"),
+}
 
 
-def decide_domain(msg):
-    prompt = f"""
-        You are a project manager.
-    
-        Decide which team should handle this request:
-        - AI
-        - ANDROID
-    
-        Respond ONLY with one word: AI or ANDROID
-    
-        Input: {msg}
-        """
+def decide_intent(msg: str) -> str:
+    prompt = f"""You are a project manager classifier.
 
-    response = client.chat.completions.create(
+Classify the request into ONE of:
+- PROJECT  → new project, planning, discussion, kickoff
+- FEATURE  → feature addition, bug fix, implementation, task
+
+Respond ONLY with one word: PROJECT or FEATURE
+
+Input: {msg}"""
+    resp = client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=[{"role": "user", "content": prompt}],
     )
+    return resp.choices[0].message.content.strip().upper()
 
-    return response.choices[0].message.content.strip()
 
+def decide_domain(msg: str) -> str:
+    prompt = f"""You are a project manager.
 
-def decide_intent(msg):
-    prompt = f"""
-    You are a project manager.
+Decide which team owns this request:
+- AI      → machine learning, AI, recommendation, model, NLP
+- ANDROID → mobile, android, app, iOS, flutter
 
-    Classify the request into ONE of these:
-    - PROJECT → new project, planning, discussion
-    - FEATURE → feature addition, bug fix, implementation
+Respond ONLY with one word: AI or ANDROID
 
-    Respond ONLY with one word: PROJECT or FEATURE
-
-    Input: {msg}
-    """
-
-    response = client.chat.completions.create(
+Input: {msg}"""
+    resp = client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=[{"role": "user", "content": prompt}],
     )
+    return resp.choices[0].message.content.strip().upper()
 
-    return response.choices[0].message.content.strip()
+
+def normalize_intent(raw: str) -> str:
+    if "PROJECT" in raw:
+        return "PROJECT"
+    if "FEATURE" in raw:
+        return "FEATURE"
+    return "UNKNOWN"
 
 
-class PMExecuter(AgentExecutor):
-    def __init__(self):
-        self.logic = PMLogic()
+def normalize_domain(raw: str) -> str:
+    if "ANDROID" in raw or "MOBILE" in raw:
+        return "ANDROID"
+    if "AI" in raw or "ML" in raw or "MACHINE" in raw:
+        return "AI"
+    return "UNKNOWN"
 
-    async def call_agent(self, url, msg):
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                url,
-                json={
-                    "jsonrpc": "2.0",
-                    "id": "1",
-                    "method": "message/send",
-                    "params": {
-                        "message": {
-                            "role": "user",
-                            "parts": [{"kind": "text", "text": msg}],
-                            "messageId": "1",
-                        }
-                    },
-                },
-            )
 
-        data = response.json()
+def find_common_slot(pm_slots: list[str], tl_slots: list[str]) -> str | None:
+    tl_set = {s.strip().lower() for s in tl_slots}
+    for slot in pm_slots:
+        if slot.strip().lower() in tl_set:
+            return slot
+    return None
 
-        if "result" not in data:
-            return None, data
 
-        text = data["result"]["parts"][0]["text"]
-        slots = [s.strip() for s in text.split(",")]
-
-        return slots, None
-
+class PMExecutor(AgentExecutor):
     async def execute(self, context, event_queue):
+        msg = extract_msg(context).lower()
 
-        # ----------- Extract message safely -----------
-        part = context.message.parts[0]
-        part_dict = part.model_dump()
+        intent_raw, domain_raw = await asyncio.gather(
+            asyncio.to_thread(decide_intent, msg),
+            asyncio.to_thread(decide_domain, msg),
+        )
 
-        msg = part_dict.get("text") or part_dict.get("root", {}).get("text", "")
-        msg = msg.lower()
+        intent = normalize_intent(intent_raw)
+        domain = normalize_domain(domain_raw)
 
-        # ----------- LLM Decisions (run in thread) -----------
-        domain_answer = await asyncio.to_thread(decide_domain, msg)
-        intent_answer = await asyncio.to_thread(decide_intent, msg)
-
-        domain = domain_answer.strip().upper()
-        intent = intent_answer.strip().upper()
-
-        # ----------- Normalize domain -----------
-        if "AI" in domain:
-            domain = "AI"
-        elif "ANDROID" in domain:
-            domain = "ANDROID"
-        else:
-            domain = "UNKNOWN"
-
-        # ----------- Agent mapping -----------
-        agent_map = {
-            "AI": ("http://localhost:9002/", "AI TL"),
-            "ANDROID": ("http://localhost:9003/", "ANDROID TL"),
-        }
-
-        if domain not in agent_map:
-            result = "PM: Could not determine domain"
-            await event_queue.enqueue_event(new_agent_text_message(result))
+        if domain not in TL_MAP:
+            await event_queue.enqueue_event(
+                new_agent_text_message("PM: Could not determine team domain")
+            )
             return
 
-        url, tl_name = agent_map[domain]
+        tl_url, tl_name = TL_MAP[domain]
 
-        # ----------- INTENT: PROJECT vs FEATURE -----------
-
-        # 🟢 PROJECT → only PM ↔ TL discussion
-        if "PROJECT" in intent:
-            # call TL (no dev delegation)
-            _, error = await self.call_agent(url, msg)
-
+        if intent == "PROJECT":
+            tl_response, error = await call_agent(tl_url, f"[INTENT:PROJECT] {msg}")
             if error:
-                result = f"PM: Error contacting {tl_name} {error}"
+                result = f"PM: Error contacting {tl_name} — {error}"
             else:
-                result = f"PM: Meeting required with {tl_name}"
-
-        # 🔵 FEATURE → go deeper (TL → dev → result)
-        elif "FEATURE" in intent:
-            tl_slots, error = await self.call_agent(url, msg)
-
-            if error:
-                result = f"PM: ERROR FROM {tl_name} {error}"
-
-            else:
-                pm_slots = self.logic.calendar["pm"]
-                common = self.logic.find_common_slot(pm_slots, tl_slots)
-
+                tl_slots = [s.strip() for s in tl_response.split(",")]
+                common = find_common_slot(PM_CALENDAR, tl_slots)
                 if common:
                     result = f"PM: Meeting scheduled with {tl_name} at {common}"
                 else:
-                    result = f"PM: No common slot with {tl_name}"
+                    result = f"PM: No common slot with {tl_name} (PM: {PM_CALENDAR}, TL: {tl_slots})"
+
+        elif intent == "FEATURE":
+            tl_response, error = await call_agent(tl_url, f"[INTENT:FEATURE] {msg}")
+            if error:
+                result = f"PM: Error contacting {tl_name} — {error}"
+            else:
+                result = f"PM → {tl_response}"
 
         else:
-            result = "PM: Could not determine intent"
+            result = "PM: Could not determine intent (expected PROJECT or FEATURE)"
 
-        # ----------- Send response -----------
         await event_queue.enqueue_event(new_agent_text_message(result))
-
-        # ----------- Debug -----------
-        ic("PM MSG:", msg)
-        ic("DOMAIN:", domain)
-        ic("INTENT:", intent)
 
     async def cancel(self, context, event_queue):
         raise Exception("cancel not supported")
@@ -181,13 +140,13 @@ class PMExecuter(AgentExecutor):
 skill = AgentSkill(
     id="pm",
     name="Project Manager",
-    description="Handles scheduling",
+    description="Handles scheduling and feature delegation",
     tags=["PM Agent"],
 )
 
 agent_card = AgentCard(
     name="PM Agent",
-    description="Handles Meetings",
+    description="Decides intent/domain and routes to TL agents",
     url="http://localhost:9001/",
     version="1.0",
     default_input_modes=["text"],
@@ -197,15 +156,11 @@ agent_card = AgentCard(
 )
 
 handler = DefaultRequestHandler(
-    agent_executor=PMExecuter(),
+    agent_executor=PMExecutor(),
     task_store=InMemoryTaskStore(),
 )
 
-app = A2AStarletteApplication(
-    agent_card=agent_card,
-    http_handler=handler,
-)
-
+app = A2AStarletteApplication(agent_card=agent_card, http_handler=handler)
 
 if __name__ == "__main__":
     uvicorn.run(app.build(), port=9001)

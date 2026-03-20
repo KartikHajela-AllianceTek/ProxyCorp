@@ -7,12 +7,12 @@ class PMLogic:
             "android": ["5pm", "4pm"],
         }
 
-    def detect_domain(self, msg):
-        if "ai" in msg:
-            return "ai"
-        elif "android" in msg:
-            return "android"
-        return "unknown"
+    # def detect_domain(self, msg):
+    #     if "ai" in msg:
+    #         return "ai"
+    #     elif "android" in msg:
+    #         return "android"
+    #     return "unknown"
 
     def find_common_slot(self, slots1, slots2):
         for slot in slots1:

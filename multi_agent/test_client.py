@@ -108,7 +108,7 @@ async def main() -> None:
                 "parts": [
                     {
                         "kind": "text",
-                        "text": "add this tiny feature:'recommendation system' to ai project",
+                        "text": "implement a new rest api endpoint for user authentication",
                     }
                 ],
                 "messageId": uuid4().hex,
