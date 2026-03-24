@@ -1,0 +1,218 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "terminal-1: Router Agent",
+            "type": "shell",
+            "command": "uv run multi_agent/router_agent/main.py",
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "shell": {
+                    "executable": "cmd.exe",
+                    "args": [
+                        "/d",
+                        "/c"
+                    ]
+                }
+            },
+            "isBackground": true,
+            "presentation": {
+                "panel": "new",
+                "group": "servers",
+                "reveal": "always"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "terminal-2: PM Agent",
+            "type": "shell",
+            "command": "uv run multi_agent/pm_agent/main.py",
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "shell": {
+                    "executable": "cmd.exe",
+                    "args": [
+                        "/d",
+                        "/c"
+                    ]
+                }
+            },
+            "isBackground": true,
+            "presentation": {
+                "panel": "new",
+                "group": "servers",
+                "reveal": "always"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "terminal-3: AI TL Agent",
+            "type": "shell",
+            "command": "uv run multi_agent/ai_agent/main.py",
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "shell": {
+                    "executable": "cmd.exe",
+                    "args": [
+                        "/d",
+                        "/c"
+                    ]
+                }
+            },
+            "isBackground": true,
+            "presentation": {
+                "panel": "new",
+                "group": "servers",
+                "reveal": "always"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "terminal-4: Android TL Agent",
+            "type": "shell",
+            "command": "uv run multi_agent/android_agent/main.py",
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "shell": {
+                    "executable": "cmd.exe",
+                    "args": [
+                        "/d",
+                        "/c"
+                    ]
+                }
+            },
+            "isBackground": true,
+            "presentation": {
+                "panel": "new",
+                "group": "servers",
+                "reveal": "always"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "terminal-5: ML Dev Agent",
+            "type": "shell",
+            "command": "uv run multi_agent/ml_dev_agent/main.py",
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "shell": {
+                    "executable": "cmd.exe",
+                    "args": [
+                        "/d",
+                        "/c"
+                    ]
+                }
+            },
+            "isBackground": true,
+            "presentation": {
+                "panel": "new",
+                "group": "servers",
+                "reveal": "always"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "terminal-6: Backend Dev Agent",
+            "type": "shell",
+            "command": "uv run multi_agent/backend_dev_agent/main.py",
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "shell": {
+                    "executable": "cmd.exe",
+                    "args": [
+                        "/d",
+                        "/c"
+                    ]
+                }
+            },
+            "isBackground": true,
+            "presentation": {
+                "panel": "new",
+                "group": "servers",
+                "reveal": "always"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "terminal-7: Mobile Dev Agent",
+            "type": "shell",
+            "command": "uv run multi_agent/mobile_dev_agent/main.py",
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "shell": {
+                    "executable": "cmd.exe",
+                    "args": [
+                        "/d",
+                        "/c"
+                    ]
+                }
+            },
+            "isBackground": true,
+            "presentation": {
+                "panel": "new",
+                "group": "servers",
+                "reveal": "always"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "terminal-8: HR Agent",
+            "type": "shell",
+            "command": "uv run multi_agent/hr_agent/main.py",
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "shell": {
+                    "executable": "cmd.exe",
+                    "args": [
+                        "/d",
+                        "/c"
+                    ]
+                }
+            },
+            "isBackground": true,
+            "presentation": {
+                "panel": "new",
+                "group": "servers",
+                "reveal": "always"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "terminal-9: HR Junior Agent",
+            "type": "shell",
+            "command": "uv run multi_agent/hr_junior/main.py",
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "shell": {
+                    "executable": "cmd.exe",
+                    "args": [
+                        "/d",
+                        "/c"
+                    ]
+                }
+            },
+            "isBackground": true,
+            "presentation": {
+                "panel": "new",
+                "group": "servers",
+                "reveal": "always"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🚀 Start All Agents",
+            "dependsOn": [
+                "terminal-1: Router Agent",
+                "terminal-2: PM Agent",
+                "terminal-3: AI TL Agent",
+                "terminal-4: Android TL Agent",
+                "terminal-5: ML Dev Agent",
+                "terminal-6: Backend Dev Agent",
+                "terminal-7: Mobile Dev Agent",
+                "terminal-8: HR Agent",
+                "terminal-9: HR Junior Agent"
+            ],
+            "dependsOrder": "parallel"
+        }
+    ]
+}
