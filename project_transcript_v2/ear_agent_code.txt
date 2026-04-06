@@ -1,0 +1,278 @@
+__init__.py  -> empty
+agent_executor.py --> 
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import asyncio
+import logging
+import time
+import struct
+import math
+from dotenv import load_dotenv
+from deepgram import DeepgramClient
+from deepgram.clients.live.v1.client import LiveOptions
+
+from a2a.server.agent_execution import AgentExecutor
+from a2a.types import Part, TextPart
+from a2a.server.tasks import TaskUpdater
+
+# Maintained from your previous fix
+from ear_agent.tools import get_deepgram_config, transcribe_with_sarvam
+
+logger = logging.getLogger(__name__)
+load_dotenv()
+
+class DualTranscriberAgent:
+    def __init__(self):
+        self.deepgram = DeepgramClient(os.getenv("DEEPGRAM_API_KEY"))
+        self.dg_connection = None 
+        
+        # --- THE PROXYCORP STATE MACHINE ---
+        self.current_engine = "sarvam_hi" # START WITH SARVAM BY DEFAULT
+        self.english_start_time = None    # Tracks sustained English
+        
+        self.sarvam_buffer = bytearray()
+        self.is_listening = False
+        self.last_spoken_time = 0
+        self.cooldown_seconds = 4 # Slightly longer to capture full hybrid sentences
+        self.noise_threshold_rms = 500  
+        self._loop = None
+        self.on_transcript_callback = None 
+
+    def _calculate_rms(self, pcm_bytes: bytes) -> float:
+        count = len(pcm_bytes) // 2
+        if count == 0: return 0.0
+        try:
+            shorts = struct.unpack(f'<{count}h', pcm_bytes)
+            return math.sqrt(sum(s * s for s in shorts) / count)
+        except:
+            return 0.0
+
+    async def run(self):
+        self._loop = asyncio.get_running_loop()
+        logger.info("🛡️ Dual-Engine Gatekeeper active. Defaulting to Sarvam Hybrid.")
+        while True:
+            await asyncio.sleep(0.5)
+            # Only flush Sarvam if it's the active engine (saves credits)
+            if self.current_engine.startswith("sarvam") and len(self.sarvam_buffer) > 0:
+                if time.time() - self.last_spoken_time > self.cooldown_seconds:
+                    asyncio.create_task(self._flush_sarvam_buffer())
+
+    async def _flush_sarvam_buffer(self):
+        logger.info(f"📦 Flushing {len(self.sarvam_buffer)} bytes to Sarvam AI...")
+        lang_code = "hi-IN" if "hi" in self.current_engine else "gu-IN"
+        
+        buffer_copy = bytes(self.sarvam_buffer)
+        self.sarvam_buffer.clear()
+        self.is_listening = False
+        
+        transcript = await asyncio.to_thread(transcribe_with_sarvam, buffer_copy, lang_code)
+        
+        if transcript:
+            logger.info(f"🗣️ [SARVAM HYBRID]: {transcript}")
+            if self.on_transcript_callback:
+                 await self.on_transcript_callback(transcript)
+
+    def _start_deepgram(self):
+        if self.dg_connection: return
+        logger.info("🔊 Waking up Deepgram...")
+        self.dg_connection = self.deepgram.listen.live.v("1")
+
+        def on_message(self_obj, result, **kwargs):
+            sentence = result.channel.alternatives[0].transcript if result.channel.alternatives else ""
+            if sentence.strip():
+                logger.info(f"🗣️ [DEEPGRAM EN]: {sentence}")
+                if self.on_transcript_callback and self._loop:
+                    asyncio.run_coroutine_threadsafe(self.on_transcript_callback(sentence), self._loop)
+
+        self.dg_connection.on("Results", on_message)
+        options = LiveOptions(**get_deepgram_config())
+        if self.dg_connection.start(options):
+            pass # Listening state handled by VAD
+
+    def _stop_deepgram(self):
+        if not self.dg_connection: return
+        self.dg_connection.finish()
+        self.dg_connection = None
+
+    async def send_audio(self, pcm_bytes: bytes):
+        current_time = time.time()
+        rms_volume = self._calculate_rms(pcm_bytes)
+
+        if rms_volume > self.noise_threshold_rms:
+            self.last_spoken_time = current_time
+            self.is_listening = True
+
+            # --- ROUTING LOGIC ---
+            if self.current_engine == "deepgram":
+                # Pure English Mode: Sarvam is sleeping
+                if not self.dg_connection: self._start_deepgram()
+                self.dg_connection.send(pcm_bytes)
+            
+            else:
+                # Hybrid Mode: Feed Sarvam
+                self.sarvam_buffer.extend(pcm_bytes)
+                
+                # FADE IN: If English has been spoken for > 10s, start warming up Deepgram
+                if self.english_start_time and (current_time - self.english_start_time > 10):
+                    if not self.dg_connection: self._start_deepgram()
+                    self.dg_connection.send(pcm_bytes) # Both receive audio temporarily
+
+        # Deepgram Cooldown Check
+        if self.dg_connection and (current_time - self.last_spoken_time > self.cooldown_seconds):
+            self._stop_deepgram()
+
+
+class EarExecutor(AgentExecutor):
+    def __init__(self):
+        self.transcriber = DualTranscriberAgent()
+
+    async def execute(self, context, event_queue):
+        # 1. Initialize the task lifecycle
+        updater = TaskUpdater(event_queue, context.task_id, context.context_id)
+        if not context.current_task:
+            await updater.submit()
+        await updater.start_work()
+        
+        command = context.get_user_input()
+        current_time = time.time()
+        status_msg = "System: Acknowledged, no engine shift required." # Default fallback
+        
+        if "switch_to_english" in command:
+            if self.transcriber.current_engine.startswith("sarvam"):
+                if self.transcriber.english_start_time is None:
+                    # Start the clock!
+                    self.transcriber.english_start_time = current_time
+                    logger.info("⏱️ English shift detected. Starting 20s transition timer...")
+                    status_msg = "System: Timer started for Deepgram transition"
+                
+                elif current_time - self.transcriber.english_start_time > 20:
+                    # Threshold crossed! Fade out Sarvam, lock in Deepgram.
+                    logger.info("🔄 20s English threshold met. Fading Sarvam, locking Deepgram.")
+                    self.transcriber.current_engine = "deepgram"
+                    self.transcriber.sarvam_buffer.clear() # Dump unused buffer
+                    status_msg = "System: Engine shifted exclusively to Deepgram"
+
+        elif "hindi" in command or "gujarati" in command:
+            # INSTANT SNAPBACK
+            logger.info("🔄 Indic speech detected! Snapping back to Sarvam Hybrid instantly.")
+            self.transcriber.current_engine = "sarvam_hi" if "hindi" in command else "sarvam_gu"
+            self.transcriber.english_start_time = None
+            self.transcriber._stop_deepgram()
+            status_msg = f"System: Engine shifted to {self.transcriber.current_engine}"
+            
+        # 2. Complete the task properly so the Orchestrator doesn't crash!
+        parts = [Part(root=TextPart(text=status_msg))]
+        await updater.complete(parts)
+    
+    async def cancel(self, context=None, event_queue=None):
+        logger.info("⚠️ EarExecutor task cancelled. Shutting down active connections.")
+        self.transcriber._stop_deepgram()
+
+
+main.py --> 
+import uvicorn
+from a2a.types import AgentCard, AgentCapabilities, Part, TextPart
+from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
+from a2a.server.apps import A2AStarletteApplication
+
+# Import the executor we built
+from agent_executor import EarExecutor
+
+def main(host='127.0.0.1', port=10001):
+    
+    # 1. Define the Agent Card
+    agent_card = AgentCard(
+        name="ProxyCorp Ear Agent",
+        description="Handles raw audio transcription, VAD gating, and dynamic model switching.",
+        url=f"http://{host}:{port}/",
+        defaultInputModes=["text/plain", "application/json"], # Added
+        defaultOutputModes=["text/plain", "application/json"], # Added
+        skills=[], # Added
+        version="1.0.0",
+        capabilities=AgentCapabilities()
+    )
+
+    # 2. Mount the Executor to the Request Handler
+    request_handler = DefaultRequestHandler(
+        agent_executor=EarExecutor(),
+        task_store=InMemoryTaskStore()
+    )
+
+    # 3. Build the Server
+    server = A2AStarletteApplication(
+        http_handler=request_handler,
+        agent_card=agent_card
+    )
+
+    print(f"🎧 [EAR AGENT] Starting up on port {port}...")
+    uvicorn.run(server.build(), host=host, port=port)
+
+if __name__ == "__main__":
+    main()
+
+tools.py --> 
+import os
+import requests
+import io
+import wave
+import logging
+from typing import Dict, Any
+
+logger = logging.getLogger(__name__)
+
+def get_deepgram_config() -> Dict[str, Any]:
+    """Configures Deepgram Nova-3 for English."""
+    return {
+        "model": "nova-3",
+        "language": "en-US",
+        "smart_format": True,
+        "diarize": True, 
+        "interim_results": True,
+        "encoding": "linear16",
+        "sample_rate": 16000,
+        "channels": 1
+    }
+
+def create_wav_buffer(pcm_bytes: bytes, sample_rate: int = 16000) -> io.BytesIO:
+    """Wraps raw PCM bytes into a valid WAV file in memory for Sarvam AI."""
+    wav_io = io.BytesIO()
+    with wave.open(wav_io, 'wb') as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2) # 16-bit
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(pcm_bytes)
+    wav_io.seek(0)
+    return wav_io
+
+def transcribe_with_sarvam(pcm_bytes: bytes, language_code: str) -> str:
+    """
+    Sends buffered audio to Sarvam's speech-to-text API.
+    language_code: 'hi-IN' for Hindi, 'gu-IN' for Gujarati.
+    """
+    sarvam_api_key = os.getenv("SARVAM_API_KEY")
+    if not sarvam_api_key:
+        logger.error("Missing SARVAM_API_KEY")
+        return ""
+
+    # Sarvam's STT endpoint (refer to their latest docs for exact URL)
+    url = "https://api.sarvam.ai/speech-to-text-translate" 
+    
+    wav_buffer = create_wav_buffer(pcm_bytes)
+    
+    headers = {"api-subscription-key": sarvam_api_key}
+    files = {'file': ('audio.wav', wav_buffer, 'audio/wav')}
+    data = {'prompt': 'Transcribe accurately in Latin script if possible.'}
+    
+    try:
+        response = requests.post(url, headers=headers, files=files, data=data)
+        if response.status_code == 200:
+            return response.json().get("transcript", "")
+        else:
+            logger.error(f"Sarvam API Error: {response.text}")
+            return ""
+    except Exception as e:
+        logger.error(f"Failed to reach Sarvam: {e}")
+        return ""

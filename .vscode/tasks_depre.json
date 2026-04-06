@@ -1,0 +1,71 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "terminal-1: Deploy Recall.ai Bot",
+      "type": "shell",
+      "command": "call local_env\\Scripts\\activate.bat && python create_bot.py",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/d", "/c"]
+        }
+      },
+      "isBackground": true,
+      "presentation": {
+        "panel": "new",
+        "group": "servers",
+        "reveal": "always"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "terminal-2: Start ngrok tunnel",
+      "type": "shell",
+      "command": "ngrok http 3000",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/d", "/c"]
+        }
+      },
+      "isBackground": true,
+      "presentation": {
+        "panel": "new",
+        "group": "servers",
+        "reveal": "always"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "terminal-3: Python Agent Server",
+      "type": "shell",
+      "command": "call local_env\\Scripts\\activate.bat && python server.py",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/d", "/c"]
+        }
+      },
+      "isBackground": true,
+      "presentation": {
+        "panel": "new",
+        "group": "servers",
+        "reveal": "always"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Full Stack",
+      "dependsOn": [
+        "terminal-1: Deploy Recall.ai Bot",
+        "terminal-2: Start ngrok tunnel",
+        "terminal-3: Python Agent Server"
+      ],
+      "dependsOrder": "parallel"
+    }
+  ]
+}

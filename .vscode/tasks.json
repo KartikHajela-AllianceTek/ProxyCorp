@@ -1,0 +1,110 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "terminal-1: ROOT Server (Port 3005)",
+      "type": "shell",
+      "command": "call local_env\\Scripts\\activate.bat && python project_transcript_v2\\server.py",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/d", "/c"]
+        }
+      },
+      "isBackground": true,
+      "presentation": {
+        "panel": "new",
+        "group": "servers",
+        "reveal": "always"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "terminal-2: Start ngrok tunnel",
+      "type": "shell",
+      "command": "ngrok http 3005",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/d", "/c"]
+        }
+      },
+      "isBackground": true,
+      "presentation": {
+        "panel": "new",
+        "group": "servers",
+        "reveal": "always"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "terminal-3: EAR Agent (Port 10001)",
+      "type": "shell",
+      "command": "call local_env\\Scripts\\activate.bat && python project_transcript_v2\\ear_agent\\main.py",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/d", "/c"]
+        }
+      },
+      "isBackground": true,
+      "presentation": {
+        "panel": "new",
+        "group": "servers",
+        "reveal": "always"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "terminal-4: LINGUISTIC Agent (Port 10002)",
+      "type": "shell",
+      "command": "call local_env\\Scripts\\activate.bat && python project_transcript_v2\\linguistic_agent\\main.py",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/d", "/c"]
+        }
+      },
+      "isBackground": true,
+      "presentation": {
+        "panel": "new",
+        "group": "servers",
+        "reveal": "always"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "terminal-5: Deploy Recall Bot",
+      "type": "shell",
+      "command": "call local_env\\Scripts\\activate.bat && python project_transcript_v2\\create_bot.py",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/d", "/c"]
+        }
+      },
+      "presentation": {
+        "panel": "new",
+        "group": "servers",
+        "reveal": "always"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🚀 Run ProxyCorp Servers",
+      "dependsOn": [
+        "terminal-1: ROOT Server (Port 3005)",
+        "terminal-2: Start ngrok tunnel",
+        "terminal-3: EAR Agent (Port 10001)",
+        "terminal-4: LINGUISTIC Agent (Port 10002)",
+        "terminal-5: Deploy Recall Bot"
+      ],
+      "dependsOrder": "parallel"
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+import uvicorn
+from a2a.types import AgentCard, AgentCapabilities, Part, TextPart 
+from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
+from a2a.server.apps import A2AStarletteApplication
+from a2a.server.agent_execution import AgentExecutor
+
+# Import the ADK agent definition
+from agent import LinguistAgent
+
+class LinguisticExecutor(AgentExecutor):
+    """Bridges the A2A Server requests to your Groq ADK Agent."""
+    def __init__(self):
+        # Initialize the Groq-powered ADK agent
+        self.adk_agent = LinguistAgent().create_agent()
+
+    async def execute(self, context, event_queue):
+
+        updater = TaskUpdater(event_queue, context.task_id, context.context_id)
+        await updater.start_work()
+
+        # The Orchestrator sends the transcript chunk here
+        transcript_chunk = context.get_user_input()
+        
+        # Ask Groq to analyze it
+        response = await self.adk_agent.run(transcript_chunk)
+
+        command_text = response.text.strip()
+        parts = [Part(root=TextPart(text=command_text))]
+        
+        # Send the command (e.g., 'switch_to_hindi') back to the Orchestrator
+        await updater.complete(parts)
+        print(f"🧠 [LINGUIST] Task complete: {command_text}")
+    
+    async def cancel(self):
+        """Required by A2A to handle task cancellation."""
+        print("⚠️ LinguisticExecutor task cancelled.")
+        pass
+
+
+def main(host='127.0.0.1', port=10002):
+    
+    # 1. Define the Agent Card
+    agent_card = AgentCard(
+        name="ProxyCorp Linguist Agent",
+        description="Groq-powered linguistic monitor for detecting Hinglish/Gujarati shifts.",
+        url=f"http://{host}:{10002}/",
+        defaultInputModes=["text/plain", "application/json"], # Added
+        defaultOutputModes=["text/plain", "application/json"], # Added
+        skills=[], # Added
+        version="1.0.0",
+        capabilities=AgentCapabilities()
+    )
+
+    # 2. Mount our custom Executor
+    request_handler = DefaultRequestHandler(
+        agent_executor=LinguisticExecutor(),
+        task_store=InMemoryTaskStore()
+    )
+
+    # 3. Build the Server
+    server = A2AStarletteApplication(
+        http_handler=request_handler,
+        agent_card=agent_card
+    )
+
+    print(f"🧠 [LINGUIST AGENT] Starting up on port {10002}...")
+    uvicorn.run(server.build(), host=host, port=10002)
+
+if __name__ == "__main__":
+    main()

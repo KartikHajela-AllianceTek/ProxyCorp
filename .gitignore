@@ -1,0 +1,4 @@
+/local_env
+.env
+/project_transcript_v2/.env
+/project_transcript_v1/.env
